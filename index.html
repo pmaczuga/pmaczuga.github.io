@@ -1,1 +1,251 @@
-Hello World
+<html>
+	<head>
+		<meta charset=utf-8>
+		<title>Maze FPS</title>
+		<style>
+			body { margin: 0; }
+			canvas { width: 100%; height: 100% }
+			#blocker {
+
+                position: absolute;
+
+                width: 100%;
+                height: 100%;
+
+                background-color: rgba(0,0,0,0.5);
+
+            }
+
+            #instructions {
+
+                width: 100%;
+                height: 100%;
+
+                display: -webkit-box;
+                display: -moz-box;
+                display: box;
+
+                -webkit-box-orient: horizontal;
+                -moz-box-orient: horizontal;
+                box-orient: horizontal;
+
+                -webkit-box-pack: center;
+                -moz-box-pack: center;
+                box-pack: center;
+
+                -webkit-box-align: center;
+                -moz-box-align: center;
+                box-align: center;
+
+                color: #ffffff;
+                text-align: center;
+
+                cursor: pointer;
+            }
+
+            #info {
+                color: #fff;
+                position: absolute;
+	            top: 30px;
+	            width: 100%;
+	            text-align: center;
+	            z-index: 100;
+	            display:block;
+            }
+
+            #collectibles {
+                color: #fff;
+            }
+
+		</style>
+	</head>
+	<body>
+        <div id="info">
+            Found collectibles:
+            <div id="collectibles"></div>
+        </div>>
+
+        <div id="blocker">
+
+            <div id="instructions">
+                <span style="font-size:40px">Click to play</span>
+                <br />
+                (W, A, S, D = Move, SPACE = Jump, MOUSE = Look around)
+            </div>
+
+        </div>
+        
+        <script src="js/three.min.js"></script>
+        <script src="js/PointerLockControls.js"></script>
+        <script src="js/physi.js"></script>
+		<script>
+
+            Physijs.scripts.worker = 'js/physijs_worker.js';
+            Physijs.scripts.ammo = 'ammo.js';
+
+            var camera, scene, renderer, controls;
+            var count = 0;
+            var tileSize = 20;
+            var collectibleSize = 2;
+
+            var raycaster;
+            
+            init();
+            animate();
+        
+            function init() {
+
+                document.getElementById('collectibles').innerHTML = count;
+                camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 1000 );
+                controls = new THREE.PointerLockControls( camera );
+
+                scene = new Physijs.Scene();
+                scene.setGravity(new THREE.Vector3(0, 0, 0));
+                
+                addLight();
+                addFloor();
+                createMaze();
+                prepareControls();
+
+                renderer = new THREE.WebGLRenderer( { antialias: true } );
+				renderer.setPixelRatio( window.devicePixelRatio );
+				renderer.setSize( window.innerWidth, window.innerHeight );
+                document.body.appendChild( renderer.domElement );
+            }
+
+            function prepareControls() {
+                var blocker = document.getElementById( 'blocker' );
+				var instructions = document.getElementById( 'instructions' );
+
+				instructions.addEventListener( 'click', function () {
+
+					controls.lock();
+
+				}, false );
+
+				controls.addEventListener( 'lock', function () {
+
+					instructions.style.display = 'none';
+					blocker.style.display = 'none';
+
+				} );
+
+				controls.addEventListener( 'unlock', function () {
+
+					blocker.style.display = 'block';
+					instructions.style.display = '';
+
+				} );
+
+                scene.add( controls.getObject() );
+            }
+
+            function addLight() {
+                var light = new THREE.HemisphereLight( 0xeeeeff, 0x777788, 0.75 );
+				light.position.set( 0.5, 1, 0.75 );
+                scene.add( light );
+            }
+
+            function addFloor() {
+                var floorGeometry = new THREE.BoxGeometry( 2000, 10, 2000, 200, 200);
+				var floorMaterial = new THREE.MeshLambertMaterial( {color: 0xf0e68c} );
+                var floor = new Physijs.BoxMesh( floorGeometry, floorMaterial, 0);
+                floor.position.y = -5;
+                scene.add( floor );
+            }
+
+            function createMaze() {
+                var loader = new THREE.FileLoader();
+                //load a text file and output the result to the console
+                loader.load(
+                    // resource URL
+                    'maze.txt',
+
+                    // onLoad callback
+                    function ( data ) {
+                        // output the text to the console
+                        var x = 0;
+                        var y = 0;
+
+                        for (var i = 0; i < data.length; i++) {
+                            var char = data.charAt(i);
+                            console.log(char);
+                            switch (char) {
+                                case '\n':
+                                    y++;
+                                    x = -1;
+                                    break;
+                                case 'x':
+                                    addWall(x, y);
+                                    break;
+                                case 'o':
+                                    addCollectible(x, y);
+                                    break;
+                                case 'p':
+                                    setPlayerPos(x, y);
+                                    break;
+                            }
+                            x++;
+                        }
+                    },
+
+                    // onError callback
+                    function ( err ) {
+                        console.error( 'An error happened' );
+                    }
+                );
+            }
+
+            function addCollectible(x, z){
+                var geometry = new THREE.SphereGeometry( collectibleSize, 16, 16 );
+                var material = new THREE.MeshLambertMaterial( { color: 0xffff00 } );
+                var sphere = new Physijs.SphereMesh(geometry, material, 0)
+                sphere.position.x = x * tileSize;
+                sphere.position.z = z * tileSize;
+                sphere.position.y = tileSize / 2;
+                scene.add( sphere );
+
+                sphere.addEventListener( 'collision', function( other_object, linear_velocity, angular_velocity ) {
+                    if (other_object === controls.getObject()){
+                        scene.remove(this);
+                        count++;
+                        document.getElementById('collectibles').innerHTML = count;
+                    }
+                });
+            }
+
+            function addWall(x, z) {
+                var texture = new THREE.TextureLoader().load( "textures/brick-wall.jpg" );
+                var geometry = new THREE.BoxGeometry( tileSize, tileSize, tileSize );
+			    var material = new THREE.MeshLambertMaterial( { map: texture } );
+                var wall = new Physijs.BoxMesh( geometry, material, 0);
+                wall.position.x = x * tileSize;
+                wall.position.z = z * tileSize;
+                wall.position.y = tileSize / 2;
+                scene.add( wall );
+            }
+
+            function setPlayerPos(x, z) {
+                controls.getObject().__dirtyPosition = true;
+                controls.getObject().position.x = x * tileSize;
+                controls.getObject().position.z = z * tileSize;
+            }
+
+            var prevTime = performance.now();
+
+            function animate() {
+                requestAnimationFrame( animate );
+
+                var time = performance.now();
+                var delta = ( time - prevTime ) / 1000;
+                controls.update(delta);
+                prevTime = time;
+                scene.simulate();
+
+                renderer.render( scene, camera );
+            }
+
+
+		</script>
+	</body>
+</html>
